@@ -38,6 +38,7 @@ class Gazebo_Linefollow_Env(gazebo_env.GazeboEnv):
 
         self.bridge = CvBridge()
         self.timeout = 0  # Used to keep track of images with no line detected
+        self.framecount = 0
 
 
     def process_image(self, data):
@@ -51,8 +52,11 @@ class Gazebo_Linefollow_Env(gazebo_env.GazeboEnv):
             cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
         except CvBridgeError as e:
             print(e)
+        
+        self.framecount += 1
 
         # cv2.imshow("raw", cv_image)
+    
 
         NUM_BINS = 3
         state = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -78,7 +82,7 @@ class Gazebo_Linefollow_Env(gazebo_env.GazeboEnv):
         gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 
         #thresholding
-        _, binary_image = cv2.threshold(gray_image, 200, 255, cv2.THRESH_BINARY_INV)
+        _, binary_image = cv2.threshold(gray_image, 130, 255, cv2.THRESH_BINARY_INV)
 
         #get sample row
         height, width = binary_image.shape
@@ -89,14 +93,16 @@ class Gazebo_Linefollow_Env(gazebo_env.GazeboEnv):
         white_pixel_indices = np.where(line_section == 255)[0]
 
         if len(white_pixel_indices) > 0:
-            center_index = int(np.mean(white_pixel_indices)) 
+            center_index = int(np.mean(white_pixel_indices))
+            # print(f"{center_index/width}") 
+            # print(f" width: {width}")
             line_detected = True
         else:
             center_index = -1 
             line_detected = False
 
         if line_detected:
-            max_index = int(center_index/width)*10
+            max_index = int(float(center_index/width)*10)
             state[max_index] = 1
             self.timeout = 0
         else:
@@ -104,8 +110,17 @@ class Gazebo_Linefollow_Env(gazebo_env.GazeboEnv):
 
         if self.timeout > 30:
             done = True
-        
+    
+        state_text = f"State: {state}"
+         # Adjust the position to be within the frame bounds (centered at the top)
+        position = (int(width * 0.05), int(height * 0.1))  # 5% from left, 10% from top
 
+        # Put the text on the frame with a color that contrasts the background
+        cv2.putText(binary_image, state_text, position, 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA)  # green text
+
+        cv2.imshow("binary", binary_image)
+        cv2.waitKey(1)  # delay to ensure the image is rendered
 
         # OLD CODE
         # max = 0
@@ -227,34 +242,42 @@ class Gazebo_Linefollow_Env(gazebo_env.GazeboEnv):
                     elif state.index(1) in [3, 5]:  # Near the center
                         reward = 40
                     else:
-                        reward = 20  # Further from center but still moving forward
+                        reward = -10  # Further from center but still moving forward
                 else:
-                    reward = 5  # Small reward for moving forward if no line detected
+                    reward = -5  # Small reward for moving forward if no line detected
 
             elif action == 1:  # LEFT
                 if 1 in state:
                     if state.index(1) in [0, 1, 2]:  # Correct turn
-                        reward = 60
-                    elif state.index(1) == 3:  # Slightly off center to the right
+                        reward = 55
+                    elif state.index(1) in  [3, 4]:  # slightly to the right
                         reward = 40
+                    elif state.index(1) in [8,9]: # left turn very bad
+                        reward = -15
                     else:
-                        reward = -20  # Penalize incorrect turn
+                        reward = -10  # penalize incorrect turn
                 else:
-                    reward = -20  # Penalize unnecessary turning
+                    reward = -3  # no reward for unnecessary turning
 
             else:  # RIGHT
                 if 1 in state:
                     if state.index(1) in [7, 8, 9]:  # Correct turn
-                        reward = 60
-                    elif state.index(1) == 6:  # Slightly off center to the left
-                        reward = 40
+                        reward = 45
+                    elif state.index(1) == [5,6]:  # slightly to the right
+                        reward = 35
+                    elif state.index(1) == [0, 1, 2]:
+                        reward = -19
                     else:
-                        reward = -20  # Penalize incorrect turn
+                        reward = -6  # Penalize incorrect turn
                 else:
-                    reward = -20  # Penalize unnecessary turning
+                    reward = 5  # little reward for unnecessary turning
+            if len(self.episode_history) >= 3:
+                if (self.episode_history[-1] == 1 and self.episode_history[-2] == 2) or \
+                (self.episode_history[-1] == 2 and self.episode_history[-2] == 1):
+                    reward = -3  # penalize left-right oscillations
 
         else:
-            reward = -50  # Penalize for losing the line
+            reward = -50  # penalize for losing the line
 
 
         return state, reward, done, {}

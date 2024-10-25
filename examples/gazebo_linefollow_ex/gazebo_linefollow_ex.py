@@ -37,7 +37,7 @@ if __name__ == '__main__':
     last_time_steps = numpy.ndarray(0)
 
     qlearn = qlearn.QLearn(actions=range(env.action_space.n),
-                           alpha=0.2, gamma=0.8, epsilon=0.8)
+                           alpha=0.2, gamma=0.8, epsilon=0.85)
 
     if os.path.exists("QValues_A+"):
         print(f"Loading Q-values from QValues_A+...")
@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     initial_epsilon = qlearn.epsilon
 
-    epsilon_discount = 0.99#0.9986
+    epsilon_discount = 0.92#0.9986
 
     start_time = time.time()
     total_episodes = 10000
